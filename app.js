@@ -29,6 +29,19 @@ $("#compressBtn").onclick=async()=>{if(!currentFile)return;showProgress("Mengomp
 function showProgress(label,p){$("#progress").classList.remove("hidden");$("#bar").style.width=p+"%";$("#progressText").textContent=Math.round(p)+"%";$("#progressLabel").textContent=label}
 
 function compressionEstimate(size,kind,preset){const ratio=kind==="image" ? (preset==="fast" ? .28 : preset==="balanced" ? .38 : .52) : (preset==="fast" ? .45 : preset==="balanced" ? .58 : .72);return Math.max(1,Math.round(size*ratio));}
+async function compressImage(file,profile){
+  const quality=profile?.[1]??.80, max=profile?.[2]??1280;
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=()=>reject(Error("Foto tidak dapat dibaca"));i.src=url});
+    const scale=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+    const w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale));
+    const c=document.createElement("canvas"); c.width=w;c.height=h;
+    const ctx=c.getContext("2d",{alpha:false});
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";ctx.drawImage(img,0,0,w,h);
+    return await new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error("Gagal membuat hasil JPG")),"image/jpeg",quality));
+  }finally{URL.revokeObjectURL(url)}
+}
 async function compressVideo(file,profile){const mbps=profile?.[1]??4,maxH=profile?.[2]??720;if(!("MediaRecorder"in window))throw Error("Browser tidak mendukung MediaRecorder");const v=document.createElement("video");v.src=URL.createObjectURL(file);v.muted=false;v.playsInline=true;await new Promise((r,j)=>{v.onloadedmetadata=r;v.onerror=()=>j(Error("Video tidak dapat dibaca"))});const scale=Math.min(1,maxH/Math.max(v.videoWidth,v.videoHeight));const c=document.createElement("canvas");c.width=Math.round(v.videoWidth*scale);c.height=Math.round(v.videoHeight*scale);const ctx=c.getContext("2d");const stream=c.captureStream(30);try{const audio=v.captureStream().getAudioTracks();audio.forEach(t=>stream.addTrack(t))}catch{}const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")?"video/webm;codecs=vp9,opus":"video/webm";const rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:mbps*1e6,audioBitsPerSecond:128000});const chunks=[];rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);const done=new Promise(r=>rec.onstop=()=>r(new Blob(chunks,{type:mime})));rec.start(1000);v.currentTime=0;await v.play();const tick=()=>{if(v.ended){rec.stop();return}ctx.drawImage(v,0,0,c.width,c.height);const p=Math.min(89,(v.currentTime/v.duration)*84+6);showProgress("Mengompres video...",p);requestAnimationFrame(tick)};tick();return done.finally(()=>{URL.revokeObjectURL(v.src);stream.getTracks().forEach(t=>t.stop())})}
 function showResult(x){const save=x.originalSize?((1-x.size/x.originalSize)*100):0;$("#result").classList.remove("hidden");$("#result").innerHTML=`<h3>✓ Kompres selesai</h3><div class="stats"><div class="stat"><small>Original</small>${fmt(x.originalSize)}</div><div class="stat"><small>Hasil</small>${fmt(x.size)}</div><div class="stat"><small>Hemat</small>${Math.max(0,save).toFixed(1)}%</div></div>${x.type==="image"?`<img class="preview" src="${URL.createObjectURL(x.blob)}">`:`<video class="preview" src="${URL.createObjectURL(x.blob)}" controls playsinline></video>`}<button class="primary" onclick="downloadItem('${x.id}')">Download hasil</button><button class="ghost" onclick="uploadItemById('${x.id}')">Upload ke Drive</button>`}
 async function downloadItem(id){const x=(await all()).find(a=>a.id===id);if(!x)return;const a=document.createElement("a");a.href=URL.createObjectURL(x.blob);a.download=x.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
