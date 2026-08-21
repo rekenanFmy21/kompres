@@ -19,7 +19,8 @@
   </div>
   <div class="quick-grid">
     <button class="action-card photo" data-go="compress" data-kind="image"><span class="action-icon">⌁</span><b>Kompres Foto</b><small>Kamera, galeri, atau file</small><em>→</em></button>
-    <button class="action-card video" data-go="compress" data-kind="video"><span class="action-icon">▶</span><b>Kompres Video</b><small>Story & social ready</small><em>→</em></button>
+    <button class="action-card video" data-go="compress" data-kind="video"><span class="action-icon">▶</span><b>Kompres Video</b><small>Setting lama tetap sama</small><em>→</em></button>
+    <button class="action-card social" data-go="social"><span class="action-icon">📲</span><b>UP SOSMED</b><small>Preset Instagram, WhatsApp & Facebook</small><em>→</em></button>
   </div>
   <div class="section-title"><div><span class="eyebrow">OVERVIEW</span><h2>Ruang kerja</h2></div><button class="text-btn" data-go="files">Lihat semua →</button></div>
   <div class="stats-grid">
@@ -43,6 +44,30 @@
     </div>
     <div id="progress" class="hidden progress-card"><div class="progress-row"><span id="progressLabel">Memproses...</span><strong id="progressText">0%</strong></div><div class="bar"><i id="bar"></i></div></div>
     <div id="result" class="hidden"></div>
+  </div>
+</section>
+
+<section id="social" class="page">
+  <div class="section-head"><div><span class="eyebrow">SOCIAL READY</span><h2>UP SOSMED</h2></div><button class="ghost" data-go="home">← Kembali</button></div>
+  <div class="card social-card">
+    <div class="social-intro"><div><strong>Preset khusus media sosial</strong><small>Kompres terpisah dari setting Kompres Biasa. Setting lama tidak diubah.</small></div><span class="social-badge">SOSMED</span></div>
+    <div class="social-platforms" id="socialPlatforms">
+      <button class="platform active" data-platform="instagram"><b>📸 Instagram</b><small>Feed • Story • Reels</small></button>
+      <button class="platform" data-platform="whatsapp"><b>💬 WhatsApp</b><small>Status • kirim foto/video</small></button>
+      <button class="platform" data-platform="facebook"><b>📘 Facebook</b><small>Foto • Video</small></button>
+    </div>
+    <div class="social-type">
+      <button id="socialImageBtn" class="type-btn active">🖼️ Foto</button>
+      <button id="socialVideoBtn" class="type-btn">🎬 Video</button>
+    </div>
+    <label class="social-select">Target upload<select id="socialPreset"></select></label>
+    <div id="socialSpec" class="social-spec"></div>
+    <label class="drop social-drop" id="socialDrop"><input id="socialFileInput" type="file" accept="image/*"><span class="drop-icon">＋</span><strong>Pilih foto/video</strong><small>Kamera • Galeri • File Manager</small></label>
+    <div id="socialOriginal" class="hidden"></div>
+    <div id="socialProgress" class="hidden progress-card"><div class="progress-row"><span id="socialProgressLabel">Memproses...</span><strong id="socialProgressText">0%</strong></div><div class="bar"><i id="socialBar"></i></div></div>
+    <div id="socialResult" class="hidden"></div>
+    <button id="socialCompressBtn" class="primary social-submit" disabled>📲 SIAPKAN UNTUK SOSMED <span>→</span></button>
+    <p class="hint social-note">Catatan video: browser dapat menghasilkan WebM bila MediaRecorder tidak menyediakan MP4/H.264. Preset tetap menargetkan resolusi dan bitrate sosial.</p>
   </div>
 </section>
 
@@ -78,7 +103,7 @@
   </div>
 </section>
 </main>
-<nav><button data-go="home" class="nav-active">⌂<small>Home</small></button><button data-go="compress">＋<small>Kompres</small></button><button data-go="files">▣<small>File</small></button><button data-go="settings">⚙<small>Setting</small></button></nav>
+<nav><button data-go="home" class="nav-active">⌂<small>Home</small></button><button data-go="compress">＋<small>Kompres</small></button><button data-go="social">📲<small>UP Sosmed</small></button><button data-go="files">▣<small>File</small></button><button data-go="settings">⚙<small>Setting</small></button></nav>
 </div>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body></html>

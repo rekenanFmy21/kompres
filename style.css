@@ -5,3 +5,24 @@
 .folder-file .ghost{margin:0;padding:7px 9px;font-size:10px;white-space:nowrap}
 
 .estimate{margin-top:9px;padding:10px 12px;border-radius:10px;background:#0b1720;border:1px solid #29414a;color:#9debd9;font-size:11px}
+
+/* UP SOSMED */
+.action-card.social:after{background:#ff6ca818}
+.social .action-icon{background:#ff6ca818}
+.social-card{padding:18px}
+.social-intro{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:4px 0 16px}
+.social-intro strong{display:block;font-size:17px}.social-intro small{display:block;color:var(--muted);margin-top:4px}
+.social-badge{font-size:9px;font-weight:900;letter-spacing:.12em;border:1px solid var(--line);padding:7px 9px;border-radius:99px}
+.social-platforms{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.platform,.type-btn{background:#0b1220;border:1px solid var(--line);border-radius:13px;padding:12px;text-align:left}
+.platform b{display:block;font-size:13px}.platform small{display:block;color:var(--muted);margin-top:4px;font-size:10px}
+.platform.active,.type-btn.active{border-color:var(--accent);background:#151f36}
+.social-type{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.type-btn{text-align:center}
+.social-select{margin-top:4px}
+.social-spec{display:flex;justify-content:space-between;align-items:center;gap:12px;background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin-top:10px}
+.social-spec b{font-size:12px}.social-spec small{color:var(--muted);text-align:right;font-size:10px}
+.social-drop{margin-top:12px;min-height:180px}
+.social-submit{width:100%;margin-top:12px}.social-note{line-height:1.5}
+.social-result-note{padding:10px 0;color:var(--muted);font-size:12px}
+nav{grid-template-columns:repeat(5,1fr)}
+@media(max-width:700px){.social-platforms{grid-template-columns:1fr}.social-spec{align-items:flex-start;flex-direction:column}.social-spec small{text-align:left}.quick-grid{grid-template-columns:1fr}}
