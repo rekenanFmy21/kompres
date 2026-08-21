@@ -1,4 +1,4 @@
-const DB="media-compressor",STORE="files",CFG="config";
+const DB="media-compressor",STORE="files",CFG="config",QUEUE="queue";
 const DEFAULT_GAS_URL="https://script.google.com/macros/s/AKfycbzEls3l9OVnW5rs0iSq9Y73n-zdpnxAs0LfwHLauZg2MZxWtdlL-xnotcCxiuFpnCqwsA/exec";let db,currentFile,currentKind;const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 const presets={
  image:{
@@ -54,8 +54,13 @@ const socialProfiles={
 };
 let socialPlatform="instagram",socialKind="image",socialFile=null,socialPresetKey="feed";
 
-function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>{r.result.createObjectStore(STORE,{keyPath:"id"});r.result.createObjectStore(CFG,{keyPath:"key"})};r.onsuccess=()=>{db=r.result;res(db)};r.onerror=()=>rej(r.error)})}
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,2);r.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains(STORE))d.createObjectStore(STORE,{keyPath:"id"});if(!d.objectStoreNames.contains(CFG))d.createObjectStore(CFG,{keyPath:"key"});if(!d.objectStoreNames.contains(QUEUE))d.createObjectStore(QUEUE,{keyPath:"id"})};r.onsuccess=()=>{db=r.result;res(db)};r.onerror=()=>rej(r.error)})}
 function tx(mode,store=STORE){return db.transaction(store,mode).objectStore(store)}
+function queuePut(v){return new Promise((r,j)=>{const q=tx("readwrite",QUEUE).put(v);q.onsuccess=()=>r();q.onerror=()=>j(q.error)})}
+function queueDel(id){return new Promise(r=>{const q=tx("readwrite",QUEUE).delete(id);q.onsuccess=()=>r()})}
+function queueAll(){return new Promise((r,j)=>{const q=tx("readonly",QUEUE).getAll();q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error)})}
+async function enqueue(item){await queuePut({id:item.id,createdAt:Date.now(),attempts:item.uploadAttempts||0,status:"PENDING"})}
+async function dequeue(id){await queueDel(id)}
 function put(v){return new Promise((r,j)=>{const q=tx("readwrite").put(v);q.onsuccess=()=>r();q.onerror=()=>j(q.error)})}
 function all(){return new Promise((r,j)=>{const q=tx("readonly").getAll();q.onsuccess=()=>r(q.result);q.onerror=()=>j(q.error)})}
 function del(id){return new Promise(r=>{const q=tx("readwrite").delete(id);q.onsuccess=()=>r()})}
@@ -66,7 +71,7 @@ $$("[data-go]").forEach(b=>b.onclick=()=>go(b.dataset.go,b.dataset.kind));
 function setup(kind){currentKind=kind;const p=presets[kind]||presets.image;$("#compressTitle").textContent=kind==="image"?"Kompres Foto":"Kompres Video";$("#fileInput").accept=kind==="image"?"image/*":"video/*";const s=$("#preset");s.innerHTML=Object.entries(p).map(([k,v])=>`<option value="${k}">${v[0]}</option>`).join("");s.value=kind==="image"?"fast":"fast";cfg(kind+"Default",s.value).then(v=>{if(p[v])s.value=v})}
 $("#fileInput").onchange=e=>loadFile(e.target.files[0]);
 async function loadFile(file){if(!file)return;currentKind=file.type.startsWith("video")?"video":"image";currentFile=file;setup(currentKind);$("#original").classList.remove("hidden");$("#presets").classList.remove("hidden");const k=$("#preset").value;$("#estimate").classList.remove("hidden");$("#estimate").textContent=`Estimasi hasil: ~${fmt(compressionEstimate(file.size,currentKind,k))}`;$("#result").classList.add("hidden");const u=URL.createObjectURL(file);$("#original").innerHTML=`<div class="stats"><div class="stat"><small>Nama</small>${esc(file.name)}</div><div class="stat"><small>Ukuran</small>${fmt(file.size)}</div><div class="stat"><small>Tipe</small>${file.type||"unknown"}</div></div>${currentKind==="image"?`<img class="preview" src="${u}" alt="">`:`<video class="preview" src="${u}" controls playsinline></video>`}`}
-$("#compressBtn").onclick=async()=>{if(!currentFile)return;showProgress("Mengompres...",5);try{const preset=$("#preset").value||Object.keys(presets[currentKind])[0];const profile=presets[currentKind][preset];if(!profile)throw Error("Preset kompresi belum tersedia");const blob=currentKind==="image"?await compressImage(currentFile,profile):await compressVideo(currentFile,profile);showProgress("Menyimpan lokal...",90);const id="MC-"+Date.now()+"-"+Math.random().toString(36).slice(2,7);const ext=currentKind==="image"?"jpg":"webm";const name=`${base(currentFile.name)}_${preset.toUpperCase()}.${ext}`;const item={id,name,originalName:currentFile.name,type:currentKind,originalSize:currentFile.size,size:blob.size,blob,createdAt:Date.now(),preset,status:"PENDING"};await put(item);showProgress("Selesai",100);showResult(item);if(navigator.onLine&&await cfg("autoUpload",true))uploadItem(item)}catch(e){console.error(e);showProgress("Gagal",0);alert("Kompresi gagal: "+e.message)}};
+$("#compressBtn").onclick=async()=>{if(!currentFile)return;showProgress("Mengompres...",5);try{const preset=$("#preset").value||Object.keys(presets[currentKind])[0];const profile=presets[currentKind][preset];if(!profile)throw Error("Preset kompresi belum tersedia");const blob=currentKind==="image"?await compressImage(currentFile,profile):await compressVideo(currentFile,profile);showProgress("Menyimpan lokal...",90);const id="MC-"+Date.now()+"-"+Math.random().toString(36).slice(2,7);const ext=currentKind==="image"?"jpg":"webm";const name=`${base(currentFile.name)}_${preset.toUpperCase()}.${ext}`;const item={id,name,originalName:currentFile.name,type:currentKind,originalSize:currentFile.size,size:blob.size,blob,createdAt:Date.now(),preset,status:"LOCAL"};await put(item);await enqueue(item);showProgress("Selesai • tersimpan lokal",100);showResult(item);if(navigator.onLine&&await cloudEnabled())syncPending()}catch(e){console.error(e);showProgress("Gagal",0);alert("Kompresi gagal: "+e.message)}};
 function setupSocial(){
   const p=socialProfiles[socialPlatform][socialKind];
   const select=$("#socialPreset");
@@ -143,9 +148,9 @@ async function processSocial(){
     const id="MC-SOC-"+Date.now()+"-"+Math.random().toString(36).slice(2,7);
     const ext=blob.type==="image/jpeg"?"jpg":blob.type==="video/mp4"?"mp4":"webm";
     const name=`${base(socialFile.name)}_${socialPlatform.toUpperCase()}_${key.toUpperCase()}.${ext}`;
-    const item={id,name,originalName:socialFile.name,type:socialKind,originalSize:socialFile.size,size:blob.size,blob,createdAt:Date.now(),preset:`SOSMED_${socialPlatform}_${key}`,socialPlatform,socialTarget:key,status:"PENDING"};
-    await put(item);showSocialProgress("Selesai",100);showSocialResult(item);
-    if(navigator.onLine&&await cfg("autoUpload",true))uploadItem(item);
+    const item={id,name,originalName:socialFile.name,type:socialKind,originalSize:socialFile.size,size:blob.size,blob,createdAt:Date.now(),preset:`SOSMED_${socialPlatform}_${key}`,socialPlatform,socialTarget:key,status:"LOCAL"};
+    await put(item);await enqueue(item);showSocialProgress("Selesai • tersimpan lokal",100);showSocialResult(item);
+    if(navigator.onLine&&await cloudEnabled())syncPending();
   }catch(e){console.error(e);showSocialProgress("Gagal",0);alert("UP SOSMED gagal: "+e.message)}
 }
 function showSocialResult(x){
@@ -173,19 +178,39 @@ async function compressVideo(file,profile){const mbps=profile?.[1]??4,maxH=profi
 function showResult(x){const save=x.originalSize?((1-x.size/x.originalSize)*100):0;$("#result").classList.remove("hidden");$("#result").innerHTML=`<h3>✓ Kompres selesai</h3><div class="stats"><div class="stat"><small>Original</small>${fmt(x.originalSize)}</div><div class="stat"><small>Hasil</small>${fmt(x.size)}</div><div class="stat"><small>Hemat</small>${Math.max(0,save).toFixed(1)}%</div></div>${x.type==="image"?`<img class="preview" src="${URL.createObjectURL(x.blob)}">`:`<video class="preview" src="${URL.createObjectURL(x.blob)}" controls playsinline></video>`}<button class="primary" onclick="downloadItem('${x.id}')">Download hasil</button><button class="ghost" onclick="uploadItemById('${x.id}')">Upload ke Drive</button>`}
 async function downloadItem(id){const x=(await all()).find(a=>a.id===id);if(!x)return;const a=document.createElement("a");a.href=URL.createObjectURL(x.blob);a.download=x.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 async function uploadItemById(id){const x=(await all()).find(a=>a.id===id);if(x)uploadItem(x)}
-async function uploadItem(x){if(!navigator.onLine)return;const url=await cfg("gasUrl","");if(!url){console.warn("GAS URL belum dikonfigurasi");return}try{const data=await blobToBase64(x.blob);const r=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"uploadFile",id:x.id,name:x.name,mime:x.blob.type,type:x.type,size:x.size,originalName:x.originalName,originalSize:x.originalSize,data})});const out=await r.json();if(!out.ok)throw Error(out.error||"Upload gagal");x.status="UPLOADED";x.driveFileId=out.fileId;x.driveUrl=out.url;await put(x);renderFiles()}catch(e){x.status="PENDING";await put(x);console.warn(e)}}
+async function cloudEnabled(){return (await cfg("cloudMode","local"))==="local_cloud"}
+async function syncPending(){if(!navigator.onLine||!(await cloudEnabled()))return;const q=await queueAll();for(const item of q.filter(x=>x.status!=="UPLOADED")){const file=(await all()).find(x=>x.id===item.id);if(file)await uploadItem(file)}}
+async function uploadItem(x){
+  if(!x)return false;
+  if(!navigator.onLine){x.status="LOCAL";await put(x);await enqueue(x);return false}
+  const url=await cfg("gasUrl","");
+  if(!url){x.status="LOCAL";await put(x);await enqueue(x);return false}
+  try{
+    const q=(await queueAll()).find(i=>i.id===x.id);
+    const attempts=(q?.attempts||0)+1;
+    if(q)await queuePut({...q,attempts,status:"UPLOADING",lastAttemptAt:Date.now()}); else await queuePut({id:x.id,createdAt:x.createdAt,attempts,status:"UPLOADING",lastAttemptAt:Date.now()});
+    const data=await blobToBase64(x.blob);
+    const r=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"uploadFile",id:x.id,name:x.name,mime:x.blob.type,type:x.type,size:x.size,originalName:x.originalName,originalSize:x.originalSize,data})});
+    const out=await r.json();if(!out.ok)throw Error(out.error||"Upload gagal");
+    x.status="UPLOADED";x.driveFileId=out.fileId;x.driveUrl=out.url;await put(x);await dequeue(x.id);renderFiles();return true;
+  }catch(e){
+    x.status="LOCAL";await put(x);await queuePut({id:x.id,createdAt:x.createdAt,attempts:((await queueAll()).find(i=>i.id===x.id)?.attempts||1),status:"PENDING",lastError:String(e.message||e),lastAttemptAt:Date.now()});console.warn("Cloud sync ditunda:",e);return false;
+  }
+}
+
 function blobToBase64(b){return new Promise((r,j)=>{const f=new FileReader();f.onload=()=>r(f.result.split(",")[1]);f.onerror=j;f.readAsDataURL(b)})}
-async function refreshHome(){const a=await all();$("#homeCount").textContent=a.length;$("#statLocal").textContent=a.length;$("#statCloud").textContent=a.filter(x=>x.status==="UPLOADED").length;$("#statPending").textContent=a.filter(x=>x.status==="PENDING").length;const recent=a.sort((x,y)=>y.createdAt-x.createdAt).slice(0,4);$("#recentList").innerHTML=recent.length?recent.map(x=>`<div class="recent-item"><div class="recent-dot">${x.type==="image"?"IMG":"VID"}</div><div class="recent-meta"><b>${esc(x.name)}</b><small>${fmt(x.size)} • ${new Date(x.createdAt).toLocaleDateString("id-ID")}</small></div><span class="recent-status ${x.status==="UPLOADED"?"ok":"pending"}">${x.status==="UPLOADED"?"DRIVE ✓":"PENDING"}</span></div>`).join(""):"<div class='empty'>Belum ada hasil kompres.</div>"}
+async function refreshHome(){const a=await all(),q=await queueAll();$("#homeCount").textContent=a.length;$("#statLocal").textContent=a.length;$("#statCloud").textContent=a.filter(x=>x.status==="UPLOADED").length;$("#statPending").textContent=q.length;const recent=a.sort((x,y)=>y.createdAt-x.createdAt).slice(0,4);$("#recentList").innerHTML=recent.length?recent.map(x=>`<div class="recent-item"><div class="recent-dot">${x.type==="image"?"IMG":"VID"}</div><div class="recent-meta"><b>${esc(x.name)}</b><small>${fmt(x.size)} • ${new Date(x.createdAt).toLocaleDateString("id-ID")}</small></div><span class="recent-status ${x.status==="UPLOADED"?"ok":"pending"}">${x.status==="UPLOADED"?"DRIVE ✓":"PENDING"}</span></div>`).join(""):"<div class='empty'>Belum ada hasil kompres.</div>"}
 let libraryMode="local";
 async function renderFiles(){
   const q=$("#search").value.toLowerCase(),f=$("#filter").value;
   if(libraryMode==="drive"){return renderDrive(q)}
   let a=await all();
-  a=a.filter(x=>(!q||x.name.toLowerCase().includes(q))&&(f==="all"||(f==="pending"&&x.status==="PENDING")||(f==="drive"&&x.status==="UPLOADED")||f===x.type)).sort((a,b)=>b.createdAt-a.createdAt);
+  const queued=new Set((await queueAll()).map(x=>x.id));
+  a=a.filter(x=>(!q||x.name.toLowerCase().includes(q))&&(f==="all"||(f==="pending"&&queued.has(x.id))||(f==="drive"&&x.status==="UPLOADED")||f===x.type)).sort((a,b)=>b.createdAt-a.createdAt);
   $("#fileList").classList.remove("hidden"); $("#folderList").classList.add("hidden");
   $("#libraryHint").textContent="File hasil kompres yang tersimpan di browser (IndexedDB).";
   $("#pickFolder").classList.remove("hidden"); $("#refreshDrive").classList.add("hidden");
-  $("#fileList").innerHTML=a.length?a.map(x=>`<article class="item"><div class="thumb">${x.type==="image"?`<img src="${URL.createObjectURL(x.blob)}" class="thumb">`:"🎥"}</div><div class="meta"><b>${esc(x.name)}</b><small>${fmt(x.size)} • ${new Date(x.createdAt).toLocaleString("id-ID")}</small><div class="status ${x.status==="UPLOADED"?"ok":"pending"}">${x.status==="UPLOADED"?"LOCAL ✓ • DRIVE ✓":"LOCAL ✓ • DRIVE ⏳ MENUNGGU"}</div></div><div class="actions"><button onclick="downloadItem('${x.id}')">Download</button><button onclick="deleteItem('${x.id}')">Hapus</button></div></article>`).join(""):"<div class='card'><p class='hint'>Belum ada hasil kompres lokal.</p></div>";
+  $("#fileList").innerHTML=a.length?a.map(x=>`<article class="item"><div class="thumb">${x.type==="image"?`<img src="${URL.createObjectURL(x.blob)}" class="thumb">`:"🎥"}</div><div class="meta"><b>${esc(x.name)}</b><small>${fmt(x.size)} • ${new Date(x.createdAt).toLocaleString("id-ID")}</small><div class="status ${x.status==="UPLOADED"?"ok":"pending"}">${x.status==="UPLOADED"?"LOCAL ✓ • CLOUD ✓":(queued.has(x.id)?"LOCAL ✓ • QUEUE ⏳":"LOCAL ✓ • TERSIMPAN")}</div></div><div class="actions"><button onclick="downloadItem('${x.id}')">Download</button><button onclick="deleteItem('${x.id}')">Hapus</button></div></article>`).join(""):"<div class='card'><p class='hint'>Belum ada hasil kompres lokal.</p></div>";
   updateStorage(); refreshHome();
 }
 async function renderDrive(q=""){
@@ -237,19 +262,22 @@ $("#tabDrive").onclick=()=>{libraryMode="drive";$("#tabDrive").classList.add("ac
 $("#refreshDrive").onclick=()=>renderDrive($("#search").value.trim());
 $("#pickFolder").onclick=pickLocalFolder; window.pickLocalFolder=pickLocalFolder;
 
-async function loadSettings(){$("#imageDefault").value=await cfg("imageDefault","balanced");$("#videoDefault").value=await cfg("videoDefault","social");$("#autoUpload").checked=await cfg("autoUpload",true);$("#autoRetry").checked=await cfg("autoRetry",true);$("#speedDefault").value=await cfg("speedDefault","fast");$("#gasUrl").value=await cfg("gasUrl",DEFAULT_GAS_URL);updateStorage()}
+async function loadSettings(){$("#imageDefault").value=await cfg("imageDefault","balanced");$("#videoDefault").value=await cfg("videoDefault","social");$("#cloudMode").value=await cfg("cloudMode","local");$("#autoRetry").checked=await cfg("autoRetry",true);$("#speedDefault").value=await cfg("speedDefault","fast");$("#gasUrl").value=await cfg("gasUrl",DEFAULT_GAS_URL);updateStorage();updateCloudUI()}
 
-["imageDefault","videoDefault","autoUpload","autoRetry"].forEach(id=>$("#"+id).onchange=()=>{const k=id==="imageDefault"?"imageDefault":id==="videoDefault"?"videoDefault":id;setCfg(k,$("#"+id).type==="checkbox"?$("#"+id).checked:$("#"+id).value)});
+["imageDefault","videoDefault","autoRetry"].forEach(id=>$("#"+id).onchange=()=>{const k=id==="imageDefault"?"imageDefault":id==="videoDefault"?"videoDefault":id;setCfg(k,$("#"+id).type==="checkbox"?$("#"+id).checked:$("#"+id).value)});
+$("#cloudMode").onchange=async()=>{await setCfg("cloudMode",$("#cloudMode").value);updateCloudUI();if($("#cloudMode").value==="local_cloud"&&navigator.onLine)syncPending()};
+$("#syncNow").onclick=async()=>{if(!navigator.onLine){$("#cloudStatus").textContent="⚠ Offline — file tetap aman di lokal.";return}$("#cloudStatus").textContent="Sinkronisasi berjalan...";await syncPending();$("#cloudStatus").textContent="✓ Sinkronisasi selesai. File tetap tersimpan di lokal.";refreshHome();renderFiles()};
+function updateCloudUI(){const mode=$("#cloudMode")?.value||"local";const online=navigator.onLine;$("#cloudStatus").textContent=mode==="local"?"💾 Lokal saja — tidak ada upload otomatis.":(online?"☁ Lokal + Cloud — sinkron saat online.":"📴 Offline — file masuk antrean dan akan disinkronkan saat online.");$("#syncNow").disabled=mode!=="local_cloud"||!online}
 $("#saveGas").onclick=async()=>{const url=$("#gasUrl").value.trim();if(!/^https:\/\/script\.google\.com\/macros\/s\/.*\/exec$/.test(url)){return $("#gasStatus").textContent="URL GAS tidak valid. Gunakan URL Web App yang berakhiran /exec."}await setCfg("gasUrl",url);$("#gasStatus").textContent="✓ URL GAS tersimpan di perangkat."};
 $("#testGas").onclick=async()=>{const url=await cfg("gasUrl",DEFAULT_GAS_URL);$("#gasStatus").textContent="Menguji koneksi...";try{const r=await fetch(url,{method:"GET",cache:"no-store"});const out=await r.json();$("#gasStatus").textContent=out.ok?"✓ GAS terhubung: "+out.service:"⚠ Backend merespons tetapi status tidak OK."}catch(e){$("#gasStatus").textContent="⚠ Tidak dapat terhubung ke GAS: "+e.message}};
-$("#clearLocal").onclick=async()=>{if(!confirm("Hapus semua hasil kompres lokal?"))return;for(const x of await all())await del(x.id);renderFiles()};
+$("#clearLocal").onclick=async()=>{if(!confirm("Hapus semua hasil kompres lokal dan antrean sinkronisasi?"))return;for(const x of await all())await del(x.id);for(const q of await queueAll())await queueDel(q.id);renderFiles();refreshHome()};
 async function updateStorage(){if(navigator.storage?.estimate){const s=await navigator.storage.estimate();$("#storage").textContent=`${fmt(s.usage||0)} / ${fmt(s.quota||0)}`}}
 function fmt(n){if(!n)return"0 B";const u=["B","KB","MB","GB"],i=Math.floor(Math.log(n)/Math.log(1024));return`${(n/1024**i).toFixed(i?1:0)} ${u[i]}`}
 function base(n){return n.replace(/\.[^.]+$/,"").replace(/[^\w-]+/g,"_").slice(0,60)||"media"}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 window.downloadItem=downloadItem;window.deleteItem=deleteItem;window.uploadItemById=uploadItemById;
-window.addEventListener("online",async()=>{$("#net").textContent="ONLINE";if(await cfg("autoRetry",true))for(const x of await all())if(x.status==="PENDING")uploadItem(x)});
-window.addEventListener("offline",()=>$("#net").textContent="OFFLINE");
+window.addEventListener("online",async()=>{$("#net").textContent="ONLINE";updateCloudUI();if(await cfg("autoRetry",true)&&await cloudEnabled())await syncPending();refreshHome()});
+window.addEventListener("offline",()=>{$("#net").textContent="OFFLINE";updateCloudUI();refreshHome()});
 const drop=$("#drop"); if(drop){["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("drag")}));
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag")}));
 drop.addEventListener("drop",e=>{const f=e.dataTransfer.files?.[0];if(!f)return;const dt=new DataTransfer();dt.items.add(f);$("#fileInput").files=dt.files;$("#fileInput").dispatchEvent(new Event("change",{bubbles:true}))})}
@@ -268,4 +296,4 @@ if(socialDrop){["dragenter","dragover"].forEach(ev=>socialDrop.addEventListener(
 ["dragleave","drop"].forEach(ev=>socialDrop.addEventListener(ev,e=>{e.preventDefault();socialDrop.classList.remove("drag")}));
 socialDrop.addEventListener("drop",e=>{const f=e.dataTransfer.files?.[0];if(f)loadSocialFile(f)})}
 
-openDB().then(async()=>{if(!(await cfg("gasUrl","")))await setCfg("gasUrl",DEFAULT_GAS_URL);if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js");$("#net").textContent=navigator.onLine?"ONLINE":"OFFLINE";go("home")});
+openDB().then(async()=>{if(!(await cfg("gasUrl","")))await setCfg("gasUrl",DEFAULT_GAS_URL);if(!(await cfg("cloudMode","")))await setCfg("cloudMode","local");if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js");$("#net").textContent=navigator.onLine?"ONLINE":"OFFLINE";go("home")});
