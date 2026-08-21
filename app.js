@@ -53,6 +53,7 @@ const socialProfiles={
   }
 };
 let socialPlatform="instagram",socialKind="image",socialFile=null,socialPresetKey="feed";
+let editFile=null,editDuration=0,editSpeedValue=1;
 
 function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,2);r.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains(STORE))d.createObjectStore(STORE,{keyPath:"id"});if(!d.objectStoreNames.contains(CFG))d.createObjectStore(CFG,{keyPath:"key"});if(!d.objectStoreNames.contains(QUEUE))d.createObjectStore(QUEUE,{keyPath:"id"})};r.onsuccess=()=>{db=r.result;res(db)};r.onerror=()=>rej(r.error)})}
 function tx(mode,store=STORE){return db.transaction(store,mode).objectStore(store)}
@@ -66,12 +67,89 @@ function all(){return new Promise((r,j)=>{const q=tx("readonly").getAll();q.onsu
 function del(id){return new Promise(r=>{const q=tx("readwrite").delete(id);q.onsuccess=()=>r()})}
 async function cfg(key,def){return new Promise(r=>{const q=tx("readonly",CFG).get(key);q.onsuccess=()=>r(q.result?.value??def)})}
 async function setCfg(key,value){return new Promise(r=>{const q=tx("readwrite",CFG).put({key,value});q.onsuccess=()=>r()})}
-function go(id,kind){$$(".page").forEach(x=>x.classList.remove("active"));$("#"+id).classList.add("active");$$("nav button").forEach(b=>b.classList.toggle("nav-active",b.dataset.go===id));if(id==="compress"&&kind)setup(kind);if(id==="social")setupSocial();if(id==="files")renderFiles();if(id==="settings")loadSettings();if(id==="home")refreshHome();scrollTo(0,0)}
+function go(id,kind){$$(".page").forEach(x=>x.classList.remove("active"));$("#"+id).classList.add("active");$$("nav button").forEach(b=>b.classList.toggle("nav-active",b.dataset.go===id));if(id==="compress"&&kind)setup(kind);if(id==="social")setupSocial();if(id==="editor")setupEditor();if(id==="files")renderFiles();if(id==="settings")loadSettings();if(id==="home")refreshHome();scrollTo(0,0)}
 $$("[data-go]").forEach(b=>b.onclick=()=>go(b.dataset.go,b.dataset.kind));
 function setup(kind){currentKind=kind;const p=presets[kind]||presets.image;$("#compressTitle").textContent=kind==="image"?"Kompres Foto":"Kompres Video";$("#fileInput").accept=kind==="image"?"image/*":"video/*";const s=$("#preset");s.innerHTML=Object.entries(p).map(([k,v])=>`<option value="${k}">${v[0]}</option>`).join("");s.value=kind==="image"?"fast":"fast";cfg(kind+"Default",s.value).then(v=>{if(p[v])s.value=v})}
 $("#fileInput").onchange=e=>loadFile(e.target.files[0]);
 async function loadFile(file){if(!file)return;currentKind=file.type.startsWith("video")?"video":"image";currentFile=file;setup(currentKind);$("#original").classList.remove("hidden");$("#presets").classList.remove("hidden");const k=$("#preset").value;$("#estimate").classList.remove("hidden");$("#estimate").textContent=`Estimasi hasil: ~${fmt(compressionEstimate(file.size,currentKind,k))}`;$("#result").classList.add("hidden");const u=URL.createObjectURL(file);$("#original").innerHTML=`<div class="stats"><div class="stat"><small>Nama</small>${esc(file.name)}</div><div class="stat"><small>Ukuran</small>${fmt(file.size)}</div><div class="stat"><small>Tipe</small>${file.type||"unknown"}</div></div>${currentKind==="image"?`<img class="preview" src="${u}" alt="">`:`<video class="preview" src="${u}" controls playsinline></video>`}`}
 $("#compressBtn").onclick=async()=>{if(!currentFile)return;showProgress("Mengompres...",5);try{const preset=$("#preset").value||Object.keys(presets[currentKind])[0];const profile=presets[currentKind][preset];if(!profile)throw Error("Preset kompresi belum tersedia");const blob=currentKind==="image"?await compressImage(currentFile,profile):await compressVideo(currentFile,profile);showProgress("Menyimpan lokal...",90);const id="MC-"+Date.now()+"-"+Math.random().toString(36).slice(2,7);const ext=currentKind==="image"?"jpg":"webm";const name=`${base(currentFile.name)}_${preset.toUpperCase()}.${ext}`;const item={id,name,originalName:currentFile.name,type:currentKind,originalSize:currentFile.size,size:blob.size,blob,createdAt:Date.now(),preset,status:"LOCAL"};await put(item);await enqueue(item);showProgress("Selesai • tersimpan lokal",100);showResult(item);if(navigator.onLine&&await cloudEnabled())syncPending()}catch(e){console.error(e);showProgress("Gagal",0);alert("Kompresi gagal: "+e.message)}};
+function setupEditor(){
+  updateEditSpeedUI(editSpeedValue);
+}
+function clampSpeed(v){v=Number(v);if(!Number.isFinite(v))v=1;return Math.min(20,Math.max(.25,v))}
+function formatDuration(sec){if(!Number.isFinite(sec))return "—";const s=Math.max(0,sec);const m=Math.floor(s/60),r=s-m*60;return `${m}:${r.toFixed(1).padStart(4,"0")}`}
+function updateEditSpeedUI(v){
+  editSpeedValue=clampSpeed(v);
+  const rounded=editSpeedValue.toFixed(2).replace(/\.00$/,'');
+  $("#editSpeed").value=editSpeedValue;
+  $("#editSpeedRange").value=editSpeedValue;
+  $("#speedValue").textContent=`${rounded}×`;
+  const start=Number($("#editStart")?.value)||0,end=Number($("#editEnd")?.value)||editDuration;
+  const kept=Math.max(0,end-start);$("#speedDuration").textContent=`Durasi hasil: ${formatDuration(kept/editSpeedValue)}`;
+  $$("#speedPresets button").forEach(b=>b.classList.toggle("active",Math.abs(Number(b.dataset.speed)-editSpeedValue)<.001));
+}
+function updateEditTrimUI(){
+  let start=Number($("#editStart").value)||0,end=Number($("#editEnd").value)||editDuration;
+  start=Math.min(Math.max(0,start),editDuration);end=Math.min(Math.max(0,end),editDuration);
+  if(end<start)end=start;
+  $("#editStart").value=start.toFixed(1);$("#editEnd").value=end.toFixed(1);
+  const left=editDuration?(start/editDuration)*100:0,width=editDuration?((end-start)/editDuration)*100:0;
+  $("#trimRange").style.marginLeft=left+"%";$("#trimRange").style.width=width+"%";
+  $("#editDuration").textContent=`Durasi asli: ${formatDuration(editDuration)} • Dipakai: ${formatDuration(end-start)}`;
+  updateEditSpeedUI(editSpeedValue);
+}
+async function loadEditVideo(file){
+  if(!file)return;if(!file.type.startsWith("video/")){alert("Pilih file video.");return}
+  editFile=file;$("#editControls").classList.remove("hidden");$("#editResult").classList.add("hidden");
+  const u=URL.createObjectURL(file),v=document.createElement("video");v.src=u;v.preload="metadata";v.muted=true;v.playsInline=true;
+  try{await new Promise((r,j)=>{v.onloadedmetadata=r;v.onerror=()=>j(Error("Video tidak dapat dibaca"))});editDuration=v.duration;$("#editStart").value="0.0";$("#editEnd").value=editDuration.toFixed(1);$("#editOriginal").classList.remove("hidden");$("#editOriginal").innerHTML=`<div class="stats"><div class="stat"><small>Nama</small>${esc(file.name)}</div><div class="stat"><small>Ukuran</small>${fmt(file.size)}</div><div class="stat"><small>Durasi</small>${formatDuration(editDuration)}</div></div><video id="editPreview" class="preview" src="${u}" controls playsinline></video>`;updateEditTrimUI()}catch(e){URL.revokeObjectURL(u);alert(e.message)}
+}
+function setEditSpeed(v){updateEditSpeedUI(v)}
+async function processEditedVideo(){
+  if(!editFile)return;
+  let start=Number($("#editStart").value),end=Number($("#editEnd").value),speed=clampSpeed($("#editSpeed").value);
+  if(!Number.isFinite(start))start=0;if(!Number.isFinite(end)||end<=0)end=editDuration;
+  start=Math.min(Math.max(0,start),editDuration);end=Math.min(Math.max(0,end),editDuration);
+  if(end<=start){alert("Waktu selesai harus lebih besar dari waktu mulai.");return}
+  if(!Number.isFinite(speed)||speed<.25||speed>20){alert("Kecepatan harus antara 0.25× sampai 20×.");return}
+  $("#editProcessBtn").disabled=true;$("#editProgress").classList.remove("hidden");$("#editResult").classList.add("hidden");
+  const src=URL.createObjectURL(editFile),v=document.createElement("video");v.src=src;v.muted=false;v.playsInline=true;v.preload="auto";
+  try{
+    await new Promise((r,j)=>{v.onloadedmetadata=r;v.onerror=()=>j(Error("Video tidak dapat dibaca"))});
+    await new Promise((r,j)=>{if(v.readyState>=2)r();else{v.oncanplay=r;v.onerror=()=>j(Error("Video belum siap diproses"))}});
+    v.currentTime=start;await new Promise(r=>{v.onseeked=r});
+    const scale=Math.min(1,1920/Math.max(v.videoWidth,v.videoHeight));
+    const c=document.createElement("canvas");c.width=Math.max(1,Math.round(v.videoWidth*scale));c.height=Math.max(1,Math.round(v.videoHeight*scale));
+    const ctx=c.getContext("2d");const stream=c.captureStream(30);
+    try{const sourceStream=v.captureStream?v.captureStream():v.mozCaptureStream?v.mozCaptureStream():null;if(sourceStream)sourceStream.getAudioTracks().forEach(t=>stream.addTrack(t))}catch(e){console.warn("Audio capture tidak tersedia",e)}
+    const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")?"video/webm;codecs=vp9,opus":"video/webm";
+    const rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:Math.min(12000000,Math.max(2500000,Math.round((editFile.size*8/Math.max(.1,end-start))*0.55)))});
+    const chunks=[];rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+    const done=new Promise((resolve,reject)=>{rec.onstop=()=>resolve(new Blob(chunks,{type:mime}));rec.onerror=e=>reject(e.error||Error("Recorder falhou"))});
+    rec.start(250);v.playbackRate=speed;try{v.preservesPitch=false;v.mozPreservesPitch=false;v.webkitPreservesPitch=false}catch{};
+    await v.play();
+    const sourceDuration=end-start;let last=0;
+    await new Promise((resolve,reject)=>{
+      const tick=()=>{
+        if(v.currentTime>=end-0.02||v.ended){try{v.pause()}catch{};if(rec.state!=="inactive")rec.stop();resolve();return}
+        ctx.drawImage(v,0,0,c.width,c.height);
+        const ratio=Math.max(0,Math.min(1,(v.currentTime-start)/sourceDuration));const pct=Math.min(96,5+ratio*90);
+        if(pct-last>.3){last=pct;$("#editBar").style.width=pct+"%";$("#editProgressText").textContent=Math.round(pct)+"%";$("#editProgressLabel").textContent=`Memproses ${speed.toFixed(2)}×...`}
+        requestAnimationFrame(tick)
+      };tick();
+    });
+    const blob=await done;$("#editBar").style.width="98%";$("#editProgressText").textContent="98%";$("#editProgressLabel").textContent="Menyimpan lokal...";
+    const id="MC-EDIT-"+Date.now()+"-"+Math.random().toString(36).slice(2,7),ext="webm";
+    const speedName=speed.toFixed(2).replace(/\.00$/,'').replace('.','p');
+    const name=`${base(editFile.name)}_CUT_${start.toFixed(1).replace('.','p')}-${end.toFixed(1).replace('.','p')}_SPEED_${speedName}X.${ext}`;
+    const item={id,name,originalName:editFile.name,type:"video",originalSize:editFile.size,size:blob.size,blob,createdAt:Date.now(),preset:"EDIT_VIDEO",editType:"cut_speed",editStart:start,editEnd:end,editSpeed:speed,status:"LOCAL"};
+    await put(item);await enqueue(item);$("#editBar").style.width="100%";$("#editProgressText").textContent="100%";$("#editProgressLabel").textContent="Selesai • tersimpan lokal";
+    const resultUrl=URL.createObjectURL(blob);$("#editResult").classList.remove("hidden");$("#editResult").innerHTML=`<h3>✓ Edit video selesai</h3><div class="stats"><div class="stat"><small>Potongan</small>${formatDuration(end-start)}</div><div class="stat"><small>Kecepatan</small>${speed.toFixed(2)}×</div><div class="stat"><small>Hasil</small>${fmt(blob.size)}</div></div><div class="editor-result-note">Hasil tersimpan lokal • ${esc(name)}</div><video class="preview" src="${resultUrl}" controls playsinline></video><button class="primary" onclick="downloadItem('${id}')">Download hasil</button><button class="ghost" onclick="uploadItemById('${id}')">Upload ke Drive</button>`;
+    if(navigator.onLine&&await cloudEnabled())syncPending();
+  }catch(e){console.error(e);$("#editProgressLabel").textContent="Gagal";alert("Edit video gagal: "+e.message)}
+  finally{URL.revokeObjectURL(src);try{v.pause()}catch{};$("#editProcessBtn").disabled=false}
+}
+
 function setupSocial(){
   const p=socialProfiles[socialPlatform][socialKind];
   const select=$("#socialPreset");
@@ -90,7 +168,16 @@ function updateSocialSpec(){
 }
 function setSocialPlatform(platform){
   socialPlatform=platform;socialPresetKey=Object.keys(socialProfiles[platform][socialKind])[0];
-  $$("#socialPlatforms .platform").forEach(b=>b.classList.toggle("active",b.dataset.platform===platform));
+  $("#editFileInput").onchange=e=>loadEditVideo(e.target.files[0]);
+$("#editStart").oninput=updateEditTrimUI;
+$("#editEnd").oninput=updateEditTrimUI;
+$("#editSpeed").oninput=e=>updateEditSpeedUI(e.target.value);
+$("#editSpeedRange").oninput=e=>updateEditSpeedUI(e.target.value);
+$$("#speedPresets button").forEach(b=>b.onclick=()=>setEditSpeed(b.dataset.speed));
+$("#editProcessBtn").onclick=processEditedVideo;
+const editDrop=$("#editDrop");
+if(editDrop){["dragenter","dragover"].forEach(ev=>editDrop.addEventListener(ev,e=>{e.preventDefault();editDrop.classList.add("drag")}));["dragleave","drop"].forEach(ev=>editDrop.addEventListener(ev,e=>{e.preventDefault();editDrop.classList.remove("drag")}));editDrop.addEventListener("drop",e=>{const f=e.dataTransfer.files?.[0];if(f)loadEditVideo(f)})}
+$$("#socialPlatforms .platform").forEach(b=>b.classList.toggle("active",b.dataset.platform===platform));
   setupSocial();
 }
 function setSocialKind(kind){
