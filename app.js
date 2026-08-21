@@ -99,7 +99,9 @@ function updateEditTrimUI(){
   updateEditSpeedUI(editSpeedValue);
 }
 async function loadEditVideo(file){
-  if(!file)return;if(!file.type.startsWith("video/")){alert("Pilih file video.");return}
+  if(!file)return;
+  const isVideo=file.type.startsWith("video/")||/\.(mp4|m4v|mov|webm|mkv|avi|ogv)$/i.test(file.name||"");
+  if(!isVideo){alert("Pilih file video (MP4, M4V, MOV, WebM, MKV, AVI, OGV).");return}
   editFile=file;$("#editControls").classList.remove("hidden");$("#editResult").classList.add("hidden");
   const u=URL.createObjectURL(file),v=document.createElement("video");v.src=u;v.preload="metadata";v.muted=true;v.playsInline=true;
   try{await new Promise((r,j)=>{v.onloadedmetadata=r;v.onerror=()=>j(Error("Video tidak dapat dibaca"))});editDuration=v.duration;$("#editStart").value="0.0";$("#editEnd").value=editDuration.toFixed(1);$("#editOriginal").classList.remove("hidden");$("#editOriginal").innerHTML=`<div class="stats"><div class="stat"><small>Nama</small>${esc(file.name)}</div><div class="stat"><small>Ukuran</small>${fmt(file.size)}</div><div class="stat"><small>Durasi</small>${formatDuration(editDuration)}</div></div><video id="editPreview" class="preview" src="${u}" controls playsinline></video>`;updateEditTrimUI()}catch(e){URL.revokeObjectURL(u);alert(e.message)}
@@ -168,18 +170,42 @@ function updateSocialSpec(){
 }
 function setSocialPlatform(platform){
   socialPlatform=platform;socialPresetKey=Object.keys(socialProfiles[platform][socialKind])[0];
-  $("#editFileInput").onchange=e=>loadEditVideo(e.target.files[0]);
+  $$("#socialPlatforms .platform").forEach(b=>b.classList.toggle("active",b.dataset.platform===platform));
+  setupSocial();
+}
+
+// EDIT VIDEO: robust file picker + drag/drop binding.
+const editFileInput=$("#editFileInput");
+const editDrop=$("#editDrop");
+if(editFileInput){
+  editFileInput.accept="video/*,.mp4,.m4v,.mov,.webm,.mkv,.avi";
+  editFileInput.addEventListener("change",e=>{
+    const f=e.target.files && e.target.files[0];
+    if(f) loadEditVideo(f);
+    // Allow selecting the same file again.
+    e.target.value="";
+  });
+}
+if(editDrop){
+  editDrop.addEventListener("keydown",e=>{
+    if(e.key==="Enter"||e.key===" "){
+      e.preventDefault();
+      editFileInput?.click();
+    }
+  });
+  ["dragenter","dragover"].forEach(ev=>editDrop.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();editDrop.classList.add("drag")}));
+  ["dragleave","drop"].forEach(ev=>editDrop.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();editDrop.classList.remove("drag")}));
+  editDrop.addEventListener("drop",e=>{
+    const f=e.dataTransfer?.files?.[0];
+    if(f) loadEditVideo(f);
+  });
+}
 $("#editStart").oninput=updateEditTrimUI;
 $("#editEnd").oninput=updateEditTrimUI;
 $("#editSpeed").oninput=e=>updateEditSpeedUI(e.target.value);
 $("#editSpeedRange").oninput=e=>updateEditSpeedUI(e.target.value);
 $$("#speedPresets button").forEach(b=>b.onclick=()=>setEditSpeed(b.dataset.speed));
 $("#editProcessBtn").onclick=processEditedVideo;
-const editDrop=$("#editDrop");
-if(editDrop){["dragenter","dragover"].forEach(ev=>editDrop.addEventListener(ev,e=>{e.preventDefault();editDrop.classList.add("drag")}));["dragleave","drop"].forEach(ev=>editDrop.addEventListener(ev,e=>{e.preventDefault();editDrop.classList.remove("drag")}));editDrop.addEventListener("drop",e=>{const f=e.dataTransfer.files?.[0];if(f)loadEditVideo(f)})}
-$$("#socialPlatforms .platform").forEach(b=>b.classList.toggle("active",b.dataset.platform===platform));
-  setupSocial();
-}
 function setSocialKind(kind){
   socialKind=kind;socialPresetKey=Object.keys(socialProfiles[socialPlatform][kind])[0];
   setupSocial();

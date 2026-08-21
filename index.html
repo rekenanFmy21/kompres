@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0a1020"><meta name="description" content="MEDIA COMPRESSOR — local-first PWA — EDIT VIDEO V9">
+<meta name="theme-color" content="#0a1020"><meta name="description" content="MEDIA COMPRESSOR — local-first PWA — EDIT VIDEO V10">
 <link rel="manifest" href="manifest.json"><link rel="stylesheet" href="style.css"><title>MEDIA COMPRESSOR</title>
 </head>
 <body>
@@ -76,7 +76,7 @@
   <div class="section-head"><div><span class="eyebrow">VIDEO EDITOR</span><h2>Edit Video</h2></div><button class="ghost" data-go="home">← Kembali</button></div>
   <div class="card editor-card">
     <div class="editor-intro"><div><strong>Cut + Kecepatan fleksibel</strong><small>Semua proses berjalan lokal di browser. Kompres Biasa dan UP SOSMED tetap terpisah.</small></div><span class="editor-badge">0.25× — 20×</span></div>
-    <label class="drop" id="editDrop"><input id="editFileInput" type="file" accept="video/*"><span class="drop-icon">＋</span><strong>Pilih video untuk diedit</strong><small>Kamera • Galeri • File Manager</small></label>
+    <div class="drop edit-drop" id="editDrop" role="button" tabindex="0" aria-label="Pilih video untuk diedit"><input id="editFileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.webm,.mkv,.avi"><span class="drop-icon">＋</span><strong>Pilih video untuk diedit</strong><small>Kamera • Galeri • File Manager</small></div>
     <div id="editOriginal" class="hidden"></div>
     <div id="editControls" class="hidden">
       <div class="editor-section-title"><span class="eyebrow">✂ CUT / TRIM</span><small>Atur bagian video yang ingin disimpan</small></div>
@@ -134,5 +134,5 @@
 </main>
 <nav><button data-go="home" class="nav-active">⌂<small>Home</small></button><button data-go="compress">＋<small>Kompres</small></button><button data-go="editor">🎬<small>Edit</small></button><button data-go="social">📲<small>Sosmed</small></button><button data-go="files">▣<small>File</small></button><button data-go="settings">⚙<small>Setting</small></button></nav>
 </div>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=11"></script>
 </body></html>
