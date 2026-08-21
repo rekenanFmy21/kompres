@@ -23,9 +23,67 @@ async function uploadItemById(id){const x=(await all()).find(a=>a.id===id);if(x)
 async function uploadItem(x){if(!navigator.onLine)return;const url=await cfg("gasUrl","");if(!url){console.warn("GAS URL belum dikonfigurasi");return}try{const data=await blobToBase64(x.blob);const r=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"uploadFile",id:x.id,name:x.name,mime:x.blob.type,type:x.type,size:x.size,originalName:x.originalName,originalSize:x.originalSize,data})});const out=await r.json();if(!out.ok)throw Error(out.error||"Upload gagal");x.status="UPLOADED";x.driveFileId=out.fileId;x.driveUrl=out.url;await put(x);renderFiles()}catch(e){x.status="PENDING";await put(x);console.warn(e)}}
 function blobToBase64(b){return new Promise((r,j)=>{const f=new FileReader();f.onload=()=>r(f.result.split(",")[1]);f.onerror=j;f.readAsDataURL(b)})}
 async function refreshHome(){const a=await all();$("#homeCount").textContent=a.length;$("#statLocal").textContent=a.length;$("#statCloud").textContent=a.filter(x=>x.status==="UPLOADED").length;$("#statPending").textContent=a.filter(x=>x.status==="PENDING").length;const recent=a.sort((x,y)=>y.createdAt-x.createdAt).slice(0,4);$("#recentList").innerHTML=recent.length?recent.map(x=>`<div class="recent-item"><div class="recent-dot">${x.type==="image"?"IMG":"VID"}</div><div class="recent-meta"><b>${esc(x.name)}</b><small>${fmt(x.size)} • ${new Date(x.createdAt).toLocaleDateString("id-ID")}</small></div><span class="recent-status ${x.status==="UPLOADED"?"ok":"pending"}">${x.status==="UPLOADED"?"DRIVE ✓":"PENDING"}</span></div>`).join(""):"<div class='empty'>Belum ada hasil kompres.</div>"}
-async function renderFiles(){const q=$("#search").value.toLowerCase(),f=$("#filter").value;let a=await all();a=a.filter(x=>(!q||x.name.toLowerCase().includes(q))&&(f==="all"||(f==="pending"&&x.status==="PENDING")||(f==="drive"&&x.status==="UPLOADED")||f===x.type)).sort((a,b)=>b.createdAt-a.createdAt);$("#fileList").innerHTML=a.length?a.map(x=>`<article class="item"><div class="thumb">${x.type==="image"?`<img src="${URL.createObjectURL(x.blob)}" class="thumb">`:"🎥"}</div><div class="meta"><b>${esc(x.name)}</b><small>${fmt(x.size)} • ${new Date(x.createdAt).toLocaleString("id-ID")}</small><div class="status ${x.status==="UPLOADED"?"ok":"pending"}">${x.status==="UPLOADED"?"LOCAL ✓ • DRIVE ✓":"LOCAL ✓ • DRIVE ⏳ MENUNGGU"}</div></div><div class="actions"><button onclick="downloadItem('${x.id}')">Download</button><button onclick="deleteItem('${x.id}')">Hapus</button></div></article>`).join(""):"<div class='card'><p class='hint'>Belum ada hasil kompres.</p></div>";updateStorage()}
+let libraryMode="local";
+async function renderFiles(){
+  const q=$("#search").value.toLowerCase(),f=$("#filter").value;
+  if(libraryMode==="drive"){return renderDrive(q)}
+  let a=await all();
+  a=a.filter(x=>(!q||x.name.toLowerCase().includes(q))&&(f==="all"||(f==="pending"&&x.status==="PENDING")||(f==="drive"&&x.status==="UPLOADED")||f===x.type)).sort((a,b)=>b.createdAt-a.createdAt);
+  $("#fileList").classList.remove("hidden"); $("#folderList").classList.add("hidden");
+  $("#libraryHint").textContent="File hasil kompres yang tersimpan di browser (IndexedDB).";
+  $("#pickFolder").classList.remove("hidden"); $("#refreshDrive").classList.add("hidden");
+  $("#fileList").innerHTML=a.length?a.map(x=>`<article class="item"><div class="thumb">${x.type==="image"?`<img src="${URL.createObjectURL(x.blob)}" class="thumb">`:"🎥"}</div><div class="meta"><b>${esc(x.name)}</b><small>${fmt(x.size)} • ${new Date(x.createdAt).toLocaleString("id-ID")}</small><div class="status ${x.status==="UPLOADED"?"ok":"pending"}">${x.status==="UPLOADED"?"LOCAL ✓ • DRIVE ✓":"LOCAL ✓ • DRIVE ⏳ MENUNGGU"}</div></div><div class="actions"><button onclick="downloadItem('${x.id}')">Download</button><button onclick="deleteItem('${x.id}')">Hapus</button></div></article>`).join(""):"<div class='card'><p class='hint'>Belum ada hasil kompres lokal.</p></div>";
+  updateStorage(); refreshHome();
+}
+async function renderDrive(q=""){
+  $("#fileList").classList.add("hidden"); $("#folderList").classList.remove("hidden");
+  $("#pickFolder").classList.add("hidden"); $("#refreshDrive").classList.remove("hidden");
+  $("#libraryHint").textContent="File yang tersimpan di folder Google Drive yang terhubung.";
+  const url=await cfg("gasUrl",DEFAULT_GAS_URL);
+  $("#folderList").innerHTML="<div class='card'><p class='hint'>Mencari file di Google Drive...</p></div>";
+  try{
+    const r=await fetch(url+"?action=listFiles&q="+encodeURIComponent(q),{cache:"no-store"});
+    const out=await r.json();
+    if(!out.ok) throw Error(out.error||"Gagal membaca Drive");
+    $("#folderList").innerHTML=out.files.length?out.files.map(x=>`<div class="drive-item"><div class="drive-icon">${x.mime.startsWith("image/")?"IMG":"FILE"}</div><div class="drive-meta"><b>${esc(x.name)}</b><small>${fmt(x.size)} • ${new Date(x.updated).toLocaleString("id-ID")}</small></div><a class="ghost" target="_blank" rel="noopener" href="${x.url}">Buka</a></div>`).join(""):"<div class='card'><p class='hint'>File Drive tidak ditemukan.</p></div>";
+  }catch(e){$("#folderList").innerHTML=`<div class="card"><p class="hint">Drive belum dapat dibaca: ${esc(e.message)}</p><button class="primary" onclick="go('settings')">Periksa GAS</button></div>`}
+}
+async function compressLocalFolderFile(index){
+  const x=(window.__localFolderFiles||[])[index]; if(!x||!x.handle)return;
+  try{
+    const f=await x.handle.getFile();
+    const dt=new DataTransfer(); dt.items.add(f);
+    $("#fileInput").files=dt.files;
+    libraryMode="local"; go("compress");
+    $("#fileInput").dispatchEvent(new Event("change",{bubbles:true}));
+  }catch(e){alert("File lokal tidak dapat dibuka: "+e.message)}
+}
+window.compressLocalFolderFile=compressLocalFolderFile;
+async function pickLocalFolder(){
+  if(!window.showDirectoryPicker){alert("Browser ini belum mendukung pembacaan folder lokal langsung. Gunakan Chrome/Edge terbaru.");return}
+  try{
+    const dir=await window.showDirectoryPicker({mode:"read"});
+    const files=[];
+    async function walk(handle,path=""){
+      for await(const [name,h] of handle.entries()){
+        if(h.kind==="file"){const f=await h.getFile();if(/^image\/|^video\//.test(f.type)||/\.(jpe?g|png|webp|gif|mp4|mov|webm|mkv)$/i.test(name))files.push({name,size:f.size,type:f.type,lastModified:f.lastModified,path:path+name,handle:h})}
+        else if(h.kind==="directory")await walk(h,path+name+"/");
+      }
+    }
+    await walk(dir);
+    $("#fileList").classList.add("hidden");$("#folderList").classList.remove("hidden");
+    $("#libraryHint").textContent=`${files.length} media ditemukan di folder "${dir.name}".`;
+    const q=$("#search").value.toLowerCase();
+    window.__localFolderFiles=files; const shown=files.filter(x=>!q||x.name.toLowerCase().includes(q));
+    $("#folderList").innerHTML=shown.length?shown.map(x=>`<div class="folder-file"><div class="drive-icon">${x.type.startsWith("image/")?"IMG":"VID"}</div><div><b>${esc(x.name)}</b><small>${esc(x.path)} • ${fmt(x.size)}</small></div><button class="ghost" onclick="compressLocalFolderFile(${files.indexOf(x)})">Kompres</button></div>`).join(""):"<div class='card'><p class='hint'>Tidak ada media yang cocok.</p></div>";
+  }catch(e){if(e.name!=="AbortError")alert("Folder tidak dapat dibaca: "+e.message)}
+}
 async function deleteItem(id){const x=(await all()).find(a=>a.id===id);if(!x)return;if(!confirm("Hapus file lokal? File Drive tidak akan dihapus otomatis."))return;await del(id);renderFiles()}
-$("#search").oninput=()=>renderFiles();$("#filter").onchange=()=>renderFiles();
+$("#search").oninput=()=>renderFiles();$("#filter").onchange=()=>renderFiles();$("#tabLocal").onclick=()=>{libraryMode="local";$("#tabLocal").classList.add("active");$("#tabDrive").classList.remove("active");$("#search").placeholder="Cari file lokal...";renderFiles()};
+$("#tabDrive").onclick=()=>{libraryMode="drive";$("#tabDrive").classList.add("active");$("#tabLocal").classList.remove("active");$("#search").placeholder="Cari file di Google Drive...";renderFiles()};
+$("#refreshDrive").onclick=()=>renderDrive($("#search").value.trim());
+$("#pickFolder").onclick=pickLocalFolder; window.pickLocalFolder=pickLocalFolder;
+
 async function loadSettings(){$("#imageDefault").value=await cfg("imageDefault","balanced");$("#videoDefault").value=await cfg("videoDefault","social");$("#autoUpload").checked=await cfg("autoUpload",true);$("#autoRetry").checked=await cfg("autoRetry",true);$("#gasUrl").value=await cfg("gasUrl",DEFAULT_GAS_URL);updateStorage()}
 
 ["imageDefault","videoDefault","autoUpload","autoRetry"].forEach(id=>$("#"+id).onchange=()=>{const k=id==="imageDefault"?"imageDefault":id==="videoDefault"?"videoDefault":id;setCfg(k,$("#"+id).type==="checkbox"?$("#"+id).checked:$("#"+id).value)});
@@ -39,4 +97,8 @@ function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",
 window.downloadItem=downloadItem;window.deleteItem=deleteItem;window.uploadItemById=uploadItemById;
 window.addEventListener("online",async()=>{$("#net").textContent="ONLINE";if(await cfg("autoRetry",true))for(const x of await all())if(x.status==="PENDING")uploadItem(x)});
 window.addEventListener("offline",()=>$("#net").textContent="OFFLINE");
+const drop=$("#drop"); if(drop){["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("drag")}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag")}));
+drop.addEventListener("drop",e=>{const f=e.dataTransfer.files?.[0];if(!f)return;const dt=new DataTransfer();dt.items.add(f);$("#fileInput").files=dt.files;$("#fileInput").dispatchEvent(new Event("change",{bubbles:true}))})}
+
 openDB().then(async()=>{if(!(await cfg("gasUrl","")))await setCfg("gasUrl",DEFAULT_GAS_URL);if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js");$("#net").textContent=navigator.onLine?"ONLINE":"OFFLINE";go("home")});

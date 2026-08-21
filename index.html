@@ -48,8 +48,12 @@
 
 <section id="files" class="page">
   <div class="section-head"><div><span class="eyebrow">LIBRARY</span><h2>File Saya</h2></div><button class="ghost" data-go="home">← Kembali</button></div>
-  <div class="toolbar"><div class="searchbox">⌕<input id="search" placeholder="Cari nama file..."></div><select id="filter"><option value="all">Semua</option><option value="image">Foto</option><option value="video">Video</option><option value="pending">Pending</option><option value="drive">Drive</option></select></div>
-  <div id="fileList"></div>
+  <div class="library-tabs">
+<button id="tabLocal" class="tab active">File Lokal</button><button id="tabDrive" class="tab">Google Drive</button>
+</div>
+<div class="toolbar"><div class="searchbox">⌕<input id="search" placeholder="Cari file lokal..."></div><select id="filter"><option value="all">Semua</option><option value="image">Foto</option><option value="video">Video</option><option value="pending">Pending</option><option value="drive">Drive</option></select></div>
+<div class="local-tools"><button id="pickFolder" class="ghost">📁 Baca Folder Lokal</button><button id="refreshDrive" class="ghost hidden">↻ Refresh Drive</button><small id="libraryHint">File hasil kompres yang tersimpan di browser.</small></div>
+  <div id="fileList"></div><div id="folderList" class="hidden"></div>
 </section>
 
 <section id="settings" class="page">
