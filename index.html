@@ -39,7 +39,7 @@
     <div id="presets" class="hidden">
       <div class="preset-head"><div><span class="eyebrow">PRESET</span><h3>Profil kompresi</h3></div><span class="quality-note">Dioptimalkan untuk berbagi</span></div>
       <label>Preset<select id="preset"></select></label>
-      <button id="compressBtn" class="primary">KOMPRES SEKARANG <span>→</span></button>
+      <div id="estimate" class="estimate hidden"></div><button id="compressBtn" class="primary">🚀 KOMPRES CEPAT <span>→</span></button>
     </div>
     <div id="progress" class="hidden progress-card"><div class="progress-row"><span id="progressLabel">Memproses...</span><strong id="progressText">0%</strong></div><div class="bar"><i id="bar"></i></div></div>
     <div id="result" class="hidden"></div>
@@ -63,7 +63,7 @@
     <label>Default Foto<select id="imageDefault"><option value="high">High Quality</option><option value="balanced">Balanced</option><option value="small">Small Size</option></select></label>
     <label>Default Video<select id="videoDefault"><option value="social">Social Master</option><option value="high">High Quality</option><option value="balanced">Balanced</option><option value="small">Small Size</option></select></label>
     <label>Auto Upload Drive <input id="autoUpload" type="checkbox"></label>
-    <label>Auto Retry Upload <input id="autoRetry" type="checkbox" checked></label>
+    <label>Auto Retry Upload <input id="autoRetry" type="checkbox" checked></label><label>Mode Kompresi Default<select id="speedDefault"><option value="fast">🚀 Fast</option><option value="balanced">⚖️ Balanced</option><option value="high">💎 High Quality</option></select></label>
   </div>
   <div class="card">
     <div class="settings-title"><span class="settings-icon">☁</span><div><h3>Google Apps Script</h3><small>Backend upload & metadata</small></div></div>
@@ -80,5 +80,5 @@
 </main>
 <nav><button data-go="home" class="nav-active">⌂<small>Home</small></button><button data-go="compress">＋<small>Kompres</small></button><button data-go="files">▣<small>File</small></button><button data-go="settings">⚙<small>Setting</small></button></nav>
 </div>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body></html>

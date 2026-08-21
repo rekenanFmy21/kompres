@@ -3,3 +3,5 @@
 
 .drop.drag{border-color:var(--accent2);background:#10251f;transform:scale(1.01)}
 .folder-file .ghost{margin:0;padding:7px 9px;font-size:10px;white-space:nowrap}
+
+.estimate{margin-top:9px;padding:10px 12px;border-radius:10px;background:#0b1720;border:1px solid #29414a;color:#9debd9;font-size:11px}
